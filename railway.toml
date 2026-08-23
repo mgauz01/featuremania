@@ -1,0 +1,11 @@
+# Import docker-compose.yml in Railway (preferred): the api service
+# build context is apps/api. If using this file as config-as-code, set the
+# service Root Directory to apps/api so COPY pyproject.toml/uv.lock resolve.
+[build]
+builder = "DOCKERFILE"
+dockerfilePath = "apps/api/Dockerfile"
+
+[deploy]
+healthcheckPath = "/health"
+healthcheckTimeout = 30
+restartPolicyType = "ON_FAILURE"

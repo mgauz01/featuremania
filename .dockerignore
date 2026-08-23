@@ -1,0 +1,11 @@
+.git
+.pi
+.pnpm-store
+node_modules
+apps/web
+docs
+.env
+.env.local
+**/.venv
+**/__pycache__
+**/tsconfig.tsbuildinfo

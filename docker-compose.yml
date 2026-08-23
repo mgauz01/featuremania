@@ -1,0 +1,20 @@
+services:
+  api:
+    # FastAPI only. Hosted Otari is the default gateway
+    # (OTARI_BASE_URL=https://api.otari.ai/v1 in .env.example). There is no
+    # public Otari gateway image to run as a sidecar — do not invent one.
+    # The API holds OTARI_API_KEY and calls hosted Otari over HTTPS; the
+    # browser never receives that key. Next.js (Vercel) reaches this API via
+    # API_ORIGIN rewrites (/v1/*), so the gateway stays network-isolated
+    # from the client.
+    build:
+      context: ./apps/api
+      dockerfile: Dockerfile
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      PORT: "8000"
+    ports:
+      - "8000:8000"
+    restart: unless-stopped

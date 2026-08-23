@@ -5,6 +5,7 @@ description = "FastAPI backend for the Otari Games multi-repo Kanban board"
 requires-python = ">=3.10"
 dependencies = [
     "fastapi>=0.115",
+    "httpx>=0.28.1",
     "uvicorn>=0.30",
 ]
 

@@ -26,7 +26,7 @@ class OtariConfig:
         if not api_key:
             raise RuntimeError("OTARI_API_KEY is required")
         return cls(
-            base_url=_env("OTARI_BASE_URL", "http://localhost:8080/v1").rstrip("/"),
+            base_url=_env("OTARI_BASE_URL", "https://api.otari.ai/v1").rstrip("/"),
             api_key=api_key,
             summary_model=_env("OTARI_SUMMARY_MODEL", "mzai:deepseek-ai/DeepSeek-V3.2"),
             category_model=_env("OTARI_CATEGORY_MODEL", "mzai:moonshotai/Kimi-K2.6"),

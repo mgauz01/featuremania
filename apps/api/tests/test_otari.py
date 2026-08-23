@@ -30,6 +30,22 @@ def test_otari_config_from_env(monkeypatch):
     assert config.guardrails() == [{"profile": "prompt-injection", "mode": "block"}]
 
 
+def test_otari_config_defaults_to_hosted(monkeypatch):
+    for name in (
+        "OTARI_BASE_URL",
+        "OTARI_SUMMARY_MODEL",
+        "OTARI_CATEGORY_MODEL",
+        "OTARI_JUDGMENT_MODEL",
+        "OTARI_GUARDRAIL_PROFILE",
+        "OTARI_GUARDRAIL_MODE",
+        "OTARI_BUDGET_USER",
+    ):
+        monkeypatch.delenv(name, raising=False)
+    monkeypatch.setenv("OTARI_API_KEY", "gw-test")
+    config = OtariConfig.from_env()
+    assert config.base_url == "https://api.otari.ai/v1"
+
+
 def test_otari_config_requires_api_key(monkeypatch):
     monkeypatch.delenv("OTARI_API_KEY", raising=False)
     try:
@@ -67,7 +83,8 @@ def test_summarize_sends_guardrails_and_budget_user():
     assert kwargs["model"] == "mzai:deepseek-ai/DeepSeek-V3.2"
     assert kwargs["user"] == "enrichment"
     assert kwargs["extra_body"] == {
-        "guardrails": [{"profile": "prompt-injection", "mode": "block"}]
+        "guardrails": [{"profile": "prompt-injection", "mode": "block"}],
+        "session_label": "enrichment",
     }
 
 
@@ -94,4 +111,5 @@ def test_complete_uses_requested_model():
     assert kwargs["model"] == "mzai:moonshotai/Kimi-K2.6"
     assert kwargs["user"] == "featuremania"
     assert kwargs["extra_body"]["guardrails"][0]["profile"] == "prompt-injection"
+    assert kwargs["extra_body"]["session_label"] == "featuremania"
 

@@ -39,28 +39,47 @@ class OtariClient:
                     "content": f"Summarize this GitHub issue in one line:\n{text}",
                 }
             ],
-            user=self.config.budget_user if self.config is not None else "featuremania",
-            extra_body={"guardrails": self._guardrails()},
+            user=self._budget_label(),
+            extra_body=self._extra_body(),
         )
         content = resp.choices[0].message.content
         if not content:
             raise RuntimeError("Otari summarize returned empty content")
         return content
 
-    def complete(self, *, model: str, messages: list[dict], user: str | None = None) -> str:
+    def complete(
+        self,
+        *,
+        model: str,
+        messages: list[dict],
+        user: str | None = None,
+        session_label: str | None = None,
+    ) -> str:
+        label = session_label or user or self._budget_label()
         resp = self.client.chat.completions.create(
             model=model,
             messages=messages,
-            user=user
-            or (self.config.budget_user if self.config is not None else "featuremania"),
-            extra_body={"guardrails": self._guardrails()},
+            user=label,
+            extra_body=self._extra_body(label),
         )
         content = resp.choices[0].message.content
         if not content:
             raise RuntimeError("Otari completion returned empty content")
         return content
 
+    def _budget_label(self) -> str:
+        if self.config is not None:
+            return self.config.budget_user
+        return "featuremania"
+
     def _guardrails(self) -> list[dict[str, str]]:
         if self.config is not None:
             return self.config.guardrails()
         return [{"profile": "prompt-injection", "mode": "block"}]
+
+    def _extra_body(self, session_label: str | None = None) -> dict:
+        label = (session_label or self._budget_label())[:255]
+        return {
+            "guardrails": self._guardrails(),
+            "session_label": label,
+        }

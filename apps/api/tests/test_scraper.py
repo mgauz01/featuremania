@@ -117,10 +117,11 @@ def test_scrape_repo_falls_back_to_graphql():
         assert stored.board_id == board_id
         assert stored.body is None
         assert stored.commits_on_closing_prs == 4
-        stored.score = 5.2
+        first_score = stored.score
         stored.status = "in_progress"
         session.add(stored)
         session.commit()
+        assert first_score > 0
 
     rescrape = [
         {
@@ -141,5 +142,5 @@ def test_scrape_repo_falls_back_to_graphql():
         stored = session.exec(select(Issue)).one()
         assert stored.title == "Empty issue (updated)"
         assert stored.comments_count == 3
-        assert stored.score == 5.2
+        assert stored.score > first_score
         assert stored.status == "in_progress"

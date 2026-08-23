@@ -7,6 +7,7 @@ from sqlmodel import Session, SQLModel, create_engine, select
 from src.models import Board, Issue
 from src.scraper.github_graphql import fetch_issues_graphql_from_env
 from src.scraper.mcp_client import MCPClient
+from src.scoring.engine import score_issue
 
 
 def _sqlite_url() -> str:
@@ -40,7 +41,6 @@ def _upsert_issues(session: Session, board_id: int, issues: list[dict]) -> None:
             continue
         fields = dict(payload)
         new_status = fields.pop("status")
-        fields.pop("score", None)
         for key, value in fields.items():
             setattr(existing, key, value)
         if new_status == "done" or existing.status in ("backlog", "done"):
@@ -52,6 +52,9 @@ def scrape_repo(owner: str, repo: str, board_id: int, engine=None) -> list[dict]
         issues = MCPClient().list_issues(owner, repo)
     except Exception:
         issues = fetch_issues_graphql_from_env(owner, repo)
+
+    for issue in issues:
+        score_issue(issue)
 
     if engine is None:
         engine = get_engine()

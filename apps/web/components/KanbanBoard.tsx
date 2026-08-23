@@ -20,6 +20,9 @@ export type KanbanIssue = {
   category?: string;
   status?: IssueStatus;
   last_activity_at?: string;
+  commits_on_closing_prs?: number;
+  subtasks_count?: number;
+  comments_count?: number;
 };
 
 type KanbanBoardProps = {
@@ -153,6 +156,14 @@ export default function KanbanBoard({ issues }: KanbanBoardProps) {
           Hide stale
         </label>
       </div>
+      {visibleIssues.length === 0 ? (
+        <p className="kanban-empty">
+          {issues.length === 0
+            ? "No issues to show yet."
+            : "No issues match these filters."}
+        </p>
+      ) : null}
+      <p className="kanban-scroll-hint">Scroll sideways to see all columns.</p>
       <div className="kanban-columns">
         {COLUMNS.map((column) => (
           <section key={column.id} className="kanban-column" aria-label={column.title}>

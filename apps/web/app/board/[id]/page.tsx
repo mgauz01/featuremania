@@ -58,6 +58,10 @@ export default function BoardPage({ params }: BoardPageProps) {
   return (
     <main>
       <h1>Board {params.id}</h1>
+      <p className="board-hint">
+        Sample issues for this demo page. Columns are a horizontal board on
+        small screens — scroll sideways. Live routing polls /v1/usage.
+      </p>
       <KanbanBoard issues={SAMPLE_ISSUES} />
       <RoutingDashboard />
     </main>

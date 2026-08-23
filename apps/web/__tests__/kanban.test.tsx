@@ -8,6 +8,13 @@ test('renders board with issues', () => {
   expect(screen.getByText('Test issue')).toBeInTheDocument()
 })
 
+test('shows a Why this score? control on each rendered card', () => {
+  const issues = [{ id: 1, title: 'Test issue', score: 5.2 }]
+  render(<KanbanBoard issues={issues} />)
+  expect(screen.getByText('Test issue')).toBeInTheDocument()
+  expect(screen.getByText('Why this score?')).toBeInTheDocument()
+})
+
 test('places issues without status in Backlog and sorts by score descending', () => {
   render(
     <KanbanBoard

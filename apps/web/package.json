@@ -11,15 +11,21 @@
   },
   "dependencies": {
     "next": "^14.2.0",
+    "next-auth": "^4.24.15",
     "react": "^18.3.0",
     "react-dom": "^18.3.0"
   },
   "devDependencies": {
+    "@testing-library/dom": "^10.4.1",
+    "@testing-library/jest-dom": "^6.9.1",
+    "@testing-library/react": "^16.3.2",
     "@types/node": "^20.0.0",
     "@types/react": "^18.3.0",
     "@types/react-dom": "^18.3.0",
+    "@vitejs/plugin-react": "^6.1.0",
     "eslint": "^8.57.1",
     "eslint-config-next": "^14.2.35",
+    "jsdom": "^30.0.1",
     "typescript": "^5.5.0",
     "vitest": "^4.1.11"
   }

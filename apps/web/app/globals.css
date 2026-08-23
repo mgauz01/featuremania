@@ -122,3 +122,51 @@ h1 {
   padding: 0.125rem 0.5rem;
   font-size: 0.75rem;
 }
+
+.routing-dashboard {
+  margin-top: 2rem;
+}
+
+.routing-dashboard-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 1rem;
+  margin-bottom: 0.75rem;
+}
+
+.routing-dashboard-header h2 {
+  font-size: 1.1rem;
+}
+
+.routing-dashboard-error,
+.routing-dashboard-empty {
+  font-size: 0.85rem;
+  color: #52525b;
+}
+
+.routing-dashboard-error {
+  color: #b91c1c;
+}
+
+.routing-dashboard table {
+  width: 100%;
+  border-collapse: collapse;
+  background: #fff;
+  border: 1px solid #e4e4e7;
+}
+
+.routing-dashboard th,
+.routing-dashboard td {
+  text-align: left;
+  padding: 0.5rem 0.75rem;
+  font-size: 0.85rem;
+  border-bottom: 1px solid #f4f4f5;
+}
+
+.routing-dashboard th {
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: #71717a;
+}

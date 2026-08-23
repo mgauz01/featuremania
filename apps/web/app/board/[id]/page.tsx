@@ -1,4 +1,5 @@
 import KanbanBoard, { type KanbanIssue } from "@/components/KanbanBoard";
+import RoutingDashboard from "@/components/RoutingDashboard";
 
 const SAMPLE_ISSUES: KanbanIssue[] = [
   {
@@ -58,6 +59,7 @@ export default function BoardPage({ params }: BoardPageProps) {
     <main>
       <h1>Board {params.id}</h1>
       <KanbanBoard issues={SAMPLE_ISSUES} />
+      <RoutingDashboard />
     </main>
   );
 }

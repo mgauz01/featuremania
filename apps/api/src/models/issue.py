@@ -1,7 +1,12 @@
+from sqlalchemy import UniqueConstraint
 from sqlmodel import Field, SQLModel
 
 
 class Issue(SQLModel, table=True):
+    __table_args__ = (
+        UniqueConstraint("board_id", "repo", "number", name="uq_issue_board_repo_number"),
+    )
+
     id: int | None = Field(default=None, primary_key=True)
     board_id: int = Field(foreign_key="board.id")
     repo: str

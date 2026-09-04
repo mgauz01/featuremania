@@ -44,6 +44,9 @@ def test_otari_config_defaults_to_hosted(monkeypatch):
     monkeypatch.setenv("OTARI_API_KEY", "gw-test")
     config = OtariConfig.from_env()
     assert config.base_url == "https://api.otari.ai/v1"
+    assert config.summary_model == "mzai:moonshotai/Kimi-K2.6"
+    assert config.category_model == "mzai:moonshotai/Kimi-K2.6"
+    assert config.judgment_model == "mzai:moonshotai/Kimi-K2.6"
 
 
 def test_otari_config_requires_api_key(monkeypatch):
@@ -56,7 +59,8 @@ def test_otari_config_requires_api_key(monkeypatch):
         raise AssertionError("expected RuntimeError")
 
 
-def test_summarize_sends_guardrails_and_budget_user():
+def test_summarize_sends_budget_user_without_hosted_guardrails(monkeypatch):
+    monkeypatch.delenv("OTARI_GUARDRAILS_URL", raising=False)
     completion = MagicMock()
     completion.choices = [MagicMock()]
     completion.choices[0].message.content = "Add dark mode to the settings page."
@@ -66,9 +70,9 @@ def test_summarize_sends_guardrails_and_budget_user():
     config = OtariConfig(
         base_url="http://localhost:8080/v1",
         api_key="gw-test",
-        summary_model="mzai:deepseek-ai/DeepSeek-V3.2",
+        summary_model="mzai:moonshotai/Kimi-K2.6",
         category_model="mzai:moonshotai/Kimi-K2.6",
-        judgment_model="mzai:deepseek-ai/DeepSeek-V3.2",
+        judgment_model="mzai:moonshotai/Kimi-K2.6",
         guardrail_profile="prompt-injection",
         guardrail_mode="block",
         budget_user="enrichment",
@@ -80,15 +84,14 @@ def test_summarize_sends_guardrails_and_budget_user():
     assert summary == "Add dark mode to the settings page."
     openai_client.chat.completions.create.assert_called_once()
     kwargs = openai_client.chat.completions.create.call_args.kwargs
-    assert kwargs["model"] == "mzai:deepseek-ai/DeepSeek-V3.2"
+    assert kwargs["model"] == "mzai:moonshotai/Kimi-K2.6"
     assert kwargs["user"] == "enrichment"
-    assert kwargs["extra_body"] == {
-        "guardrails": [{"profile": "prompt-injection", "mode": "block"}],
-        "session_label": "enrichment",
-    }
+    assert kwargs["extra_body"] == {"session_label": "enrichment"}
+    assert "guardrails" not in kwargs["extra_body"]
 
 
-def test_complete_uses_requested_model():
+def test_complete_uses_requested_model(monkeypatch):
+    monkeypatch.delenv("OTARI_GUARDRAILS_URL", raising=False)
     completion = MagicMock()
     completion.choices = [MagicMock()]
     completion.choices[0].message.content = "bugfix"
@@ -110,6 +113,72 @@ def test_complete_uses_requested_model():
     kwargs = openai_client.chat.completions.create.call_args.kwargs
     assert kwargs["model"] == "mzai:moonshotai/Kimi-K2.6"
     assert kwargs["user"] == "featuremania"
-    assert kwargs["extra_body"]["guardrails"][0]["profile"] == "prompt-injection"
-    assert kwargs["extra_body"]["session_label"] == "featuremania"
+    assert kwargs["extra_body"] == {"session_label": "featuremania"}
+
+
+def test_complete_includes_guardrails_when_url_set(monkeypatch):
+    monkeypatch.setenv("OTARI_GUARDRAILS_URL", "http://guardrails.test")
+    completion = MagicMock()
+    completion.choices = [MagicMock()]
+    completion.choices[0].message.content = "ok"
+    openai_client = MagicMock()
+    openai_client.chat.completions.create.return_value = completion
+    config = OtariConfig(
+        base_url="http://localhost:8080/v1",
+        api_key="gw-test",
+        summary_model="mzai:moonshotai/Kimi-K2.6",
+        category_model="mzai:moonshotai/Kimi-K2.6",
+        judgment_model="mzai:moonshotai/Kimi-K2.6",
+        guardrail_profile="prompt-injection",
+        guardrail_mode="block",
+        budget_user="featuremania",
+    )
+    client = OtariClient.from_config(config, client=openai_client)
+
+    client.complete(
+        model="mzai:moonshotai/Kimi-K2.6",
+        messages=[{"role": "user", "content": "Reply with ok"}],
+        session_label="preflight",
+    )
+
+    kwargs = openai_client.chat.completions.create.call_args.kwargs
+    assert kwargs["extra_body"] == {
+        "session_label": "preflight",
+        "guardrails": [
+            {
+                "profile": "prompt-injection",
+                "mode": "block",
+                "url": "http://guardrails.test",
+            }
+        ],
+    }
+
+
+class _Denied(Exception):
+    status_code = 403
+
+
+def test_complete_retries_403_then_succeeds(monkeypatch):
+    monkeypatch.setattr("src.otari.client.time.sleep", lambda _seconds: None)
+    completion = MagicMock()
+    completion.choices = [MagicMock()]
+    completion.choices[0].message.content = "ok"
+    openai_client = MagicMock()
+    openai_client.chat.completions.create.side_effect = [
+        _Denied("<html><h1>403 Forbidden</h1></html>"),
+        completion,
+    ]
+    client = OtariClient(
+        base_url="http://localhost:8080/v1",
+        api_key="gw-test",
+        client=openai_client,
+    )
+
+    result = client.complete(
+        model="mzai:moonshotai/Kimi-K2.6",
+        messages=[{"role": "user", "content": "Reply with ok"}],
+    )
+
+    assert result == "ok"
+    assert openai_client.chat.completions.create.call_count == 2
 

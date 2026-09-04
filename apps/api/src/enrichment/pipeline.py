@@ -1,10 +1,16 @@
+import json
+import re
+
 from src.otari.client import OtariClient
 from src.otari.config import OtariConfig
 
 EASY_BODY_LIMIT = 800
-DEFAULT_SUMMARY_MODEL = "mzai:deepseek-ai/DeepSeek-V3.2"
+ISSUE_TEXT_LIMIT = 2000
+DEFAULT_SUMMARY_MODEL = "mzai:moonshotai/Kimi-K2.6"
 DEFAULT_CATEGORY_MODEL = "mzai:moonshotai/Kimi-K2.6"
-DEFAULT_JUDGMENT_MODEL = "mzai:deepseek-ai/DeepSeek-V3.2"
+DEFAULT_JUDGMENT_MODEL = "mzai:moonshotai/Kimi-K2.6"
+_CATEGORIES = {"bugfix", "enhancement", "docs", "chore", "question"}
+_JSON_FENCE = re.compile(r"```(?:json)?\s*(.*?)\s*```", re.DOTALL | re.IGNORECASE)
 
 
 class EnrichmentPipeline:
@@ -23,53 +29,28 @@ class EnrichmentPipeline:
         route = self.route(issue)
         models = self._models_for(route)
         text = _issue_text(issue)
-        summary = self.otari_client.complete(
-            model=models["summary"],
-            messages=[
-                {
-                    "role": "user",
-                    "content": f"Summarize this GitHub issue in one line:\n{text}",
-                }
-            ],
-            user=self.job_label,
-            session_label=self.job_label,
-        )
-        category = self.otari_client.complete(
-            model=models["category"],
+        model = models["summary"] if route == "easy" else models["judgment"]
+        raw = self.otari_client.complete(
+            model=model,
             messages=[
                 {
                     "role": "user",
                     "content": (
-                        "Classify this GitHub issue as one word: "
-                        "bugfix, enhancement, docs, chore, or question.\n"
-                        f"{text}"
+                        "Read this GitHub issue. Reply with JSON only, no markdown:\n"
+                        '{"summary":"<one line>","category":"bugfix|enhancement|docs|chore|question",'
+                        '"worked_on":true or false}\n\n'
+                        f"Issue:\n{text}"
                     ),
                 }
             ],
             user=self.job_label,
             session_label=self.job_label,
         )
-        worked = self.otari_client.complete(
-            model=models["judgment"],
-            messages=[
-                {
-                    "role": "user",
-                    "content": (
-                        "Has this GitHub issue been worked on? "
-                        "Answer yes or no only.\n"
-                        f"commits_on_closing_prs={issue.get('commits_on_closing_prs', 0)}\n"
-                        f"comments_count={issue.get('comments_count', 0)}\n"
-                        f"{text}"
-                    ),
-                }
-            ],
-            user=self.job_label,
-            session_label=self.job_label,
-        )
+        parsed = _parse_enrichment(raw)
         return {
-            "summary": summary.strip(),
-            "category": category.strip().lower(),
-            "worked_on": _parse_yes(worked),
+            "summary": parsed["summary"],
+            "category": parsed["category"],
+            "worked_on": parsed["worked_on"],
             "route": route,
         }
 
@@ -100,9 +81,40 @@ class EnrichmentPipeline:
 def _issue_text(issue: dict) -> str:
     title = issue.get("title") or ""
     body = issue.get("body") or ""
-    return f"{title}\n{body}".strip()
+    text = f"{title}\n{body}".strip()
+    if len(text) <= ISSUE_TEXT_LIMIT:
+        return text
+    return text[:ISSUE_TEXT_LIMIT]
 
 
-def _parse_yes(text: str) -> bool:
-    first = text.strip().lower().split()[0] if text.strip() else ""
+def _parse_enrichment(raw: str) -> dict:
+    blob = (raw or "").strip()
+    fenced = _JSON_FENCE.search(blob)
+    if fenced:
+        blob = fenced.group(1).strip()
+    start = blob.find("{")
+    end = blob.rfind("}")
+    if start < 0 or end <= start:
+        raise RuntimeError("Otari enrichment did not return JSON")
+    data = json.loads(blob[start : end + 1])
+    if not isinstance(data, dict):
+        raise RuntimeError("Otari enrichment JSON was not an object")
+    summary = str(data.get("summary") or "").strip()
+    if not summary:
+        raise RuntimeError("Otari enrichment returned empty summary")
+    category = str(data.get("category") or "").strip().lower()
+    if category not in _CATEGORIES:
+        category = "unknown"
+    return {
+        "summary": summary,
+        "category": category,
+        "worked_on": _parse_yes(data.get("worked_on")),
+    }
+
+
+def _parse_yes(value: object) -> bool:
+    if isinstance(value, bool):
+        return value
+    text = str(value or "").strip().lower()
+    first = text.split()[0] if text else ""
     return first in {"yes", "y", "true"}

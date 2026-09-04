@@ -1,6 +1,44 @@
+import os
+import time
+
 from openai import OpenAI
 
 from src.otari.config import OtariConfig
+
+_RETRY_STATUSES = {403, 408, 409, 429, 500, 502, 503, 504}
+_RETRY_BACKOFF = (0.8, 2.0)
+_MAX_ATTEMPTS = 3
+
+_otari_calls = 0
+_otari_retries = 0
+
+
+def reset_otari_call_counts() -> None:
+    global _otari_calls, _otari_retries
+    _otari_calls = 0
+    _otari_retries = 0
+
+
+def otari_call_count() -> int:
+    return _otari_calls
+
+
+def otari_retry_count() -> int:
+    return _otari_retries
+
+
+def _retryable(exc: BaseException) -> bool:
+    status = getattr(exc, "status_code", None)
+    if isinstance(status, int):
+        return status in _RETRY_STATUSES
+    name = type(exc).__name__
+    return name in {
+        "APITimeoutError",
+        "APIConnectionError",
+        "RateLimitError",
+        "InternalServerError",
+        "TimeoutError",
+    }
 
 
 class OtariClient:
@@ -14,7 +52,12 @@ class OtariClient:
         self.base_url = base_url.rstrip("/")
         self.api_key = api_key
         self.config = config
-        self.client = client or OpenAI(base_url=self.base_url, api_key=api_key, timeout=30.0)
+        self.client = client or OpenAI(
+            base_url=self.base_url,
+            api_key=api_key,
+            timeout=30.0,
+            max_retries=0,
+        )
 
     @classmethod
     def from_config(cls, config: OtariConfig, client: OpenAI | None = None) -> "OtariClient":
@@ -29,9 +72,9 @@ class OtariClient:
         model = (
             self.config.summary_model
             if self.config is not None
-            else "mzai:deepseek-ai/DeepSeek-V3.2"
+            else "mzai:moonshotai/Kimi-K2.6"
         )
-        resp = self.client.chat.completions.create(
+        return self.complete(
             model=model,
             messages=[
                 {
@@ -39,13 +82,7 @@ class OtariClient:
                     "content": f"Summarize this GitHub issue in one line:\n{text}",
                 }
             ],
-            user=self._budget_label(),
-            extra_body=self._extra_body(),
         )
-        content = resp.choices[0].message.content
-        if not content:
-            raise RuntimeError("Otari summarize returned empty content")
-        return content
 
     def complete(
         self,
@@ -56,16 +93,30 @@ class OtariClient:
         session_label: str | None = None,
     ) -> str:
         label = session_label or user or self._budget_label()
-        resp = self.client.chat.completions.create(
-            model=model,
-            messages=messages,
-            user=label,
-            extra_body=self._extra_body(label),
-        )
-        content = resp.choices[0].message.content
-        if not content:
-            raise RuntimeError("Otari completion returned empty content")
-        return content
+        last_exc: BaseException | None = None
+        for attempt in range(1, _MAX_ATTEMPTS + 1):
+            global _otari_calls, _otari_retries
+            _otari_calls += 1
+            try:
+                resp = self.client.chat.completions.create(
+                    model=model,
+                    messages=messages,
+                    user=label,
+                    extra_body=self._extra_body(label),
+                )
+                content = resp.choices[0].message.content
+                if not content:
+                    raise RuntimeError("Otari completion returned empty content")
+                return content
+            except Exception as exc:
+                last_exc = exc
+                if attempt < _MAX_ATTEMPTS and _retryable(exc):
+                    _otari_retries += 1
+                    time.sleep(_RETRY_BACKOFF[min(attempt - 1, len(_RETRY_BACKOFF) - 1)])
+                    continue
+                raise
+        assert last_exc is not None
+        raise last_exc
 
     def _budget_label(self) -> str:
         if self.config is not None:
@@ -79,7 +130,8 @@ class OtariClient:
 
     def _extra_body(self, session_label: str | None = None) -> dict:
         label = (session_label or self._budget_label())[:255]
-        return {
-            "guardrails": self._guardrails(),
-            "session_label": label,
-        }
+        body: dict = {"session_label": label}
+        url = os.getenv("OTARI_GUARDRAILS_URL", "").strip()
+        if url:
+            body["guardrails"] = [{**entry, "url": url} for entry in self._guardrails()]
+        return body

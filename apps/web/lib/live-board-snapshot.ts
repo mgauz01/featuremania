@@ -8,6 +8,19 @@ export function issueKeyFor(issue: { repo?: string; number?: number }): string |
   return `${issue.repo}#${issue.number}`;
 }
 
+export function selectionKeyFor(issue: {
+  id: number;
+  repo?: string;
+  number?: number;
+  issueKey?: string;
+  kind?: "github" | "featuremania";
+}): string | undefined {
+  if (issue.kind === "featuremania") {
+    return undefined;
+  }
+  return issueKeyFor(issue) ?? issue.issueKey ?? `local:${issue.id}`;
+}
+
 export const LIVE_BOARD_SNAPSHOT_KEY = "featuremania.live-board.v1";
 export const DEFAULT_BOARD_ID = "board-1";
 export const DEFAULT_BOARD_NAME = "Board 1";
@@ -54,28 +67,43 @@ export function asIssue(value: unknown): KanbanIssue | null {
     id: issue.id,
     title: issue.title,
     score: issue.score,
-    repo: typeof issue.repo === "string" ? issue.repo : undefined,
-    summary: typeof issue.summary === "string" ? issue.summary : undefined,
-    category: typeof issue.category === "string" ? issue.category : undefined,
-    status: asStatus(issue.status),
-    last_activity_at: typeof issue.last_activity_at === "string" ? issue.last_activity_at : undefined,
-    commits_on_closing_prs:
-      typeof issue.commits_on_closing_prs === "number" ? issue.commits_on_closing_prs : undefined,
-    subtasks_count: typeof issue.subtasks_count === "number" ? issue.subtasks_count : undefined,
-    comments_count:
-      typeof issue.comments_count === "number" ? issue.comments_count : undefined,
-    score_reason: typeof issue.score_reason === "string" ? issue.score_reason : undefined,
   };
+  if (typeof issue.repo === "string") {
+    parsed.repo = issue.repo;
+  }
+  if (typeof issue.summary === "string") {
+    parsed.summary = issue.summary;
+  }
+  if (typeof issue.category === "string") {
+    parsed.category = issue.category;
+  }
+  const status = asStatus(issue.status);
+  if (status) {
+    parsed.status = status;
+  }
+  if (typeof issue.last_activity_at === "string") {
+    parsed.last_activity_at = issue.last_activity_at;
+  }
+  if (typeof issue.commits_on_closing_prs === "number") {
+    parsed.commits_on_closing_prs = issue.commits_on_closing_prs;
+  }
+  if (typeof issue.subtasks_count === "number") {
+    parsed.subtasks_count = issue.subtasks_count;
+  }
+  if (typeof issue.comments_count === "number") {
+    parsed.comments_count = issue.comments_count;
+  }
+  if (typeof issue.score_reason === "string") {
+    parsed.score_reason = issue.score_reason;
+  }
   if (typeof issue.number === "number") {
     parsed.number = issue.number;
   }
   const issueKey =
-    typeof issue.issueKey === "string"
-      ? issue.issueKey
-      : issueKeyFor({
-          repo: parsed.repo,
-          number: parsed.number,
-        });
+    issueKeyFor({
+      repo: parsed.repo,
+      number: parsed.number,
+    }) ?? (typeof issue.issueKey === "string" ? issue.issueKey : undefined);
   if (issueKey) {
     parsed.issueKey = issueKey;
   }

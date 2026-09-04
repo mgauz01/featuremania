@@ -5,6 +5,7 @@ import {
   LIVE_BOARD_SNAPSHOT_KEY,
   asIssue,
   issueKeyFor,
+  selectionKeyFor,
   nextBoardId,
   readLiveBoardSnapshot,
   wipeLiveBoardSnapshot,
@@ -157,6 +158,9 @@ test("derives a stable issueKey from repo and number, not sqlite id", () => {
   });
   expect(parsed?.issueKey).toBe("mozilla-ai/otari#12");
   expect(asIssue({ id: 1, title: "Real issue", score: 1, repo: "mozilla-ai/otari" })?.issueKey).toBeUndefined();
+  expect(selectionKeyFor({ id: 7, repo: "acme/app", number: 3 })).toBe("acme/app#3");
+  expect(selectionKeyFor({ id: 7 })).toBe("local:7");
+  expect(selectionKeyFor({ id: -1, kind: "featuremania", issueKey: "fm:group:x" })).toBeUndefined();
 });
 
 test("keeps a v2 snapshot that has no GitHub number", () => {

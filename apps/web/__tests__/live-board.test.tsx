@@ -875,6 +875,19 @@ async function loadPair() {
   await screen.findByText("Login leak");
 }
 
+test("select all and deselect toggle every visible GitHub ticket", async () => {
+  vi.stubGlobal("fetch", boardFetch());
+  await loadPair();
+  fireEvent.click(screen.getByRole("button", { name: "Select all" }));
+  expect(screen.getByRole("checkbox", { name: "Select acme/app#1" })).toBeChecked();
+  expect(screen.getByRole("checkbox", { name: "Select acme/app#2" })).toBeChecked();
+  expect(screen.getByText("2 selected")).toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "Deselect" }));
+  expect(screen.getByRole("checkbox", { name: "Select acme/app#1" })).not.toBeChecked();
+  expect(screen.getByRole("checkbox", { name: "Select acme/app#2" })).not.toBeChecked();
+  expect(screen.getByText("Select tickets to deconstruct or consolidate.")).toBeInTheDocument();
+});
+
 test("deconstructs two selected tickets under a FeatureMania parent", async () => {
   vi.stubGlobal("fetch", boardFetch());
   await loadPair();
@@ -958,6 +971,27 @@ test("overlap failure leaves the board unchanged", async () => {
   await screen.findByText(/otari overlap failed/i);
   expect(screen.getByRole("heading", { name: "Login leak" })).toBeInTheDocument();
   expect(readLiveBoardSnapshot()?.boards[0]?.groups).toEqual([]);
+});
+
+test("plain-text overlap failures still show the server message", async () => {
+  const fetchMock = boardFetch();
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (input: RequestInfo, init?: RequestInit) => {
+      if (String(input).includes("/api/live/overlap") && init?.method === "POST") {
+        return new Response("Internal Server Error", {
+          status: 500,
+          headers: { "Content-Type": "text/plain; charset=utf-8" },
+        });
+      }
+      return fetchMock(input, init);
+    }),
+  );
+  await loadPair();
+  fireEvent.click(screen.getByRole("checkbox", { name: "Select acme/app#1" }));
+  fireEvent.click(screen.getByRole("checkbox", { name: "Select acme/app#2" }));
+  fireEvent.click(screen.getByRole("button", { name: "Consolidate" }));
+  await screen.findByText(/internal server error/i);
 });
 
 test("Refresh keeps grouping when sqlite ids change", async () => {

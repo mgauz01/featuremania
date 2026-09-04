@@ -80,7 +80,10 @@ def parse_overlap(raw: str, allowed_keys: set[str]) -> dict:
     end = blob.rfind("}")
     if start < 0 or end <= start:
         raise RuntimeError("Otari overlap did not return JSON")
-    data = json.loads(blob[start : end + 1])
+    try:
+        data = json.loads(blob[start : end + 1])
+    except json.JSONDecodeError as exc:
+        raise RuntimeError("Otari overlap did not return JSON") from exc
     if not isinstance(data, dict):
         raise RuntimeError("Otari overlap JSON was not an object")
     try:

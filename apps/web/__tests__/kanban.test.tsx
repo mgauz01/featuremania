@@ -192,6 +192,17 @@ test('work-index click does not select the card', () => {
   expect(document.querySelector('.issue-card')).not.toHaveAttribute('draggable')
 })
 
+test('GitHub cards without issueKey still show a checkbox', () => {
+  render(
+    <KanbanBoard
+      issues={[{ id: 11, title: 'No key yet', score: 1, repo: 'mozilla-ai/any-llm' }]}
+      selectedKeys={[]}
+      onToggleSelect={() => undefined}
+    />,
+  )
+  expect(screen.getByRole('checkbox', { name: 'Select local:11' })).toBeInTheDocument()
+})
+
 test('Featuremania cards omit the work index and are not selectable', () => {
   render(
     <KanbanBoard

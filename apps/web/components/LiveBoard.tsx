@@ -12,6 +12,7 @@ import {
   emptyNamedBoard,
   nextBoardId,
   readLiveBoardSnapshot,
+  selectionKeyFor,
   wipeLiveBoardSnapshot,
   writeLiveBoardSnapshot,
   type NamedLiveBoard,
@@ -43,10 +44,28 @@ type LoadPayload = {
 };
 
 function errorMessage(payload: unknown, fallback: string): string {
+  if (typeof payload === "string" && payload.trim()) {
+    return payload.replace(/\s+/g, " ").trim().slice(0, 240);
+  }
   if (payload && typeof payload === "object") {
     const record = payload as { detail?: unknown; error?: unknown };
     if (typeof record.detail === "string" && record.detail) {
       return record.detail;
+    }
+    if (Array.isArray(record.detail) && record.detail[0]) {
+      const first = record.detail[0];
+      if (typeof first === "string" && first.trim()) {
+        return first;
+      }
+      if (
+        first &&
+        typeof first === "object" &&
+        "msg" in first &&
+        typeof first.msg === "string" &&
+        first.msg.trim()
+      ) {
+        return first.msg;
+      }
     }
     if (typeof record.error === "string" && record.error) {
       return record.error;
@@ -359,6 +378,11 @@ export default function LiveBoard({
     );
   };
 
+  const paintedIssues = applyGroups(issues ?? [], groups);
+  const selectableKeys = paintedIssues
+    .map((issue) => selectionKeyFor(issue))
+    .filter((key): key is string => Boolean(key));
+
   const confirmDeconstruct = () => {
     const nextGroups = deconstruct(groups, selectedKeys, parentTitle);
     if (nextGroups === groups) {
@@ -371,9 +395,10 @@ export default function LiveBoard({
   };
 
   const requestOverlap = async () => {
-    const chosen = (issues ?? []).filter(
-      (issue) => issue.issueKey && selectedKeys.includes(issue.issueKey),
-    );
+    const chosen = (issues ?? []).filter((issue) => {
+      const key = selectionKeyFor(issue);
+      return Boolean(key && selectedKeys.includes(key));
+    });
     setOverlapBusy(true);
     setOverlapError(null);
     setOverlapResult(null);
@@ -384,31 +409,45 @@ export default function LiveBoard({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           issues: chosen.map((issue) => ({
-            issueKey: issue.issueKey,
+            issueKey: selectionKeyFor(issue) ?? issue.issueKey,
             title: issue.title,
             summary: issue.summary ?? "",
           })),
         }),
       });
-      const payload = (await response.json()) as {
-        overlap_index?: number;
-        reason?: string;
-        cited_issue_keys?: string[];
-        detail?: string;
-        error?: string;
-      };
+      const text = await response.text();
+      let payload: unknown = text;
+      try {
+        payload = JSON.parse(text) as {
+          overlap_index?: number;
+          reason?: string;
+          cited_issue_keys?: string[];
+          detail?: string;
+          error?: string;
+        };
+      } catch {
+        payload = text;
+      }
       if (!response.ok) {
         setOverlapError(errorMessage(payload, "Otari could not score overlap"));
         return;
       }
-      if (typeof payload.overlap_index !== "number") {
+      const scored =
+        payload && typeof payload === "object"
+          ? (payload as {
+              overlap_index?: number;
+              reason?: string;
+              cited_issue_keys?: string[];
+            })
+          : null;
+      if (!scored || typeof scored.overlap_index !== "number") {
         setOverlapError("Otari could not score overlap");
         return;
       }
       setOverlapResult({
-        overlap_index: payload.overlap_index,
-        reason: payload.reason ?? "",
-        cited_issue_keys: payload.cited_issue_keys ?? [],
+        overlap_index: scored.overlap_index,
+        reason: scored.reason ?? "",
+        cited_issue_keys: scored.cited_issue_keys ?? [],
       });
     } catch {
       setOverlapError("Otari could not score overlap");
@@ -533,6 +572,20 @@ export default function LiveBoard({
               </p>
               <button
                 type="button"
+                disabled={selectableKeys.length === 0}
+                onClick={() => setSelectedKeys(selectableKeys)}
+              >
+                Select all
+              </button>
+              <button
+                type="button"
+                disabled={selectedKeys.length === 0}
+                onClick={() => setSelectedKeys([])}
+              >
+                Deselect
+              </button>
+              <button
+                type="button"
                 disabled={selectedKeys.length < 2}
                 onClick={() => {
                   setParentTitle("");
@@ -550,7 +603,7 @@ export default function LiveBoard({
               </button>
             </div>
             <KanbanBoard
-              issues={applyGroups(issues, groups)}
+              issues={paintedIssues}
               sourceIssues={issues}
               selectedKeys={selectedKeys}
               onToggleSelect={toggleIssue}

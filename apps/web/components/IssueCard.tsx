@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import type { KanbanIssue } from "@/components/KanbanBoard";
 import ScoreBadge from "@/components/ScoreBadge";
 import ScoreTooltip from "@/components/ScoreTooltip";
+import { selectionKeyFor } from "@/lib/live-board-snapshot";
 
 type IssueCardProps = {
   issue: KanbanIssue;
@@ -23,7 +24,8 @@ export default function IssueCard({
   const [open, setOpen] = useState(false);
   const titleId = `score-reason-${issue.id}`;
   const isFeaturemania = issue.kind === "featuremania";
-  const selectable = Boolean(issue.issueKey && !isFeaturemania && onToggleSelect);
+  const selectionKey = selectionKeyFor(issue);
+  const selectable = Boolean(selectionKey && onToggleSelect);
 
   useEffect(() => {
     if (!open) {
@@ -45,11 +47,11 @@ export default function IssueCard({
           <label className="issue-card-select">
             <input
               type="checkbox"
-              aria-label={`Select ${issue.issueKey}`}
+              aria-label={`Select ${selectionKey}`}
               checked={selected}
               onChange={() => {
-                if (issue.issueKey && onToggleSelect) {
-                  onToggleSelect(issue.issueKey);
+                if (selectionKey && onToggleSelect) {
+                  onToggleSelect(selectionKey);
                 }
               }}
             />

@@ -16,6 +16,15 @@ def test_parse_overlap_clamps_and_drops_hallucinated_keys():
     assert parsed["reason"] == "same login work"
 
 
+def test_parse_overlap_invalid_object_is_runtime_error():
+    try:
+        parse_overlap("{overlap_index: 2}", {"acme/app#1"})
+    except RuntimeError as exc:
+        assert "did not return JSON" in str(exc)
+    else:
+        raise AssertionError("expected invalid JSON to fail as RuntimeError")
+
+
 def test_parse_overlap_rejects_missing_citations_when_index_is_positive():
     try:
         parse_overlap(
@@ -77,3 +86,30 @@ def test_overlap_route_requires_two_issues_and_uses_otari():
         )
     assert ok.status_code == 200
     assert ok.json()["overlap_index"] == 0
+
+
+def test_overlap_route_maps_non_runtime_otari_errors_to_json_503():
+    client = TestClient(app, raise_server_exceptions=False)
+    with (
+        patch("src.main.OtariConfig.from_env") as from_env,
+        patch("src.main.OtariClient.from_config") as from_config,
+        patch("src.main.OverlapPipeline.score", side_effect=ValueError("{overlap_index: 2}")),
+    ):
+        from_env.return_value = MagicMock()
+        from_config.return_value = MagicMock()
+        response = client.post(
+            "/v1/boards/overlap",
+            json={
+                "issues": [
+                    {"issueKey": "acme/app#1", "title": "Login"},
+                    {"issueKey": "acme/app#2", "title": "Signup"},
+                ]
+            },
+            headers={"Authorization": "Bearer oauth-token"},
+        )
+    assert response.status_code == 503
+    assert response.headers["content-type"].startswith("application/json")
+    detail = response.json()["detail"]
+    assert isinstance(detail, str)
+    assert "Otari" in detail
+    assert "Internal Server Error" not in detail

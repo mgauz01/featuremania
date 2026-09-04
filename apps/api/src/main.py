@@ -6,7 +6,7 @@ from src.auth.bearer import github_bearer
 from src.auth.github import router as auth_router
 from src.enrichment.overlap import OverlapPipeline
 from src.envload import load_repo_dotenv
-from src.live.load import get_live_board, get_load_progress, load_board
+from src.live.load import _otari_fail_detail, get_live_board, get_load_progress, load_board
 from src.live.preflight import list_repos, run_preflight
 from src.otari.client import OtariClient
 from src.otari.config import OtariConfig
@@ -93,5 +93,5 @@ def boards_overlap(body: OverlapBody, _token: str = Depends(github_bearer)):
         config = OtariConfig.from_env()
         pipeline = OverlapPipeline(OtariClient.from_config(config), config=config)
         return pipeline.score(payload)
-    except RuntimeError as exc:
-        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail=_otari_fail_detail(exc)) from exc

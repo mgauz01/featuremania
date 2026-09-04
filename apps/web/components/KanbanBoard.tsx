@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import IssueCard from "@/components/IssueCard";
 import RepoPicker from "@/components/RepoPicker";
+import { selectionKeyFor } from "@/lib/live-board-snapshot";
 
 export type IssueStatus =
   | "backlog"
@@ -219,16 +220,19 @@ export default function KanbanBoard({
               {issuesByColumn[column.id].length === 0 ? (
                 <p className="kanban-column-empty">None from GitHub</p>
               ) : null}
-              {issuesByColumn[column.id].map((issue) => (
-                <IssueCard
-                  key={issue.issueKey ?? issue.id}
-                  issue={issue}
-                  childrenIssues={childrenFor(issue, sourceIssues)}
-                  selected={Boolean(issue.issueKey && selectedKeys.includes(issue.issueKey))}
-                  onToggleSelect={onToggleSelect}
-                  onUndoGroup={onUndoGroup}
-                />
-              ))}
+              {issuesByColumn[column.id].map((issue) => {
+                const selectionKey = selectionKeyFor(issue);
+                return (
+                  <IssueCard
+                    key={selectionKey ?? issue.issueKey ?? issue.id}
+                    issue={issue}
+                    childrenIssues={childrenFor(issue, sourceIssues)}
+                    selected={Boolean(selectionKey && selectedKeys.includes(selectionKey))}
+                    onToggleSelect={onToggleSelect}
+                    onUndoGroup={onUndoGroup}
+                  />
+                );
+              })}
             </div>
           </section>
         ))}

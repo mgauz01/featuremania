@@ -27,18 +27,6 @@ export default function RootLayout({
         <script dangerouslySetInnerHTML={{ __html: THEME_BOOT_SCRIPT }} />
         <Providers>
           <header className="app-header">
-            <a className="app-brand" href="/board/1">
-              {/* Brand vault is a static public asset, not a content image. */}
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
-                className="app-brand-mark"
-                src="/brand-vault.png"
-                alt=""
-                width={28}
-                height={28}
-              />
-              FeatureMania
-            </a>
             <div className="app-header-actions">
               <ThemeToggle />
               <SignOutButton />

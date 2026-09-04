@@ -1,4 +1,5 @@
 import json
+import sqlite3
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -47,9 +48,11 @@ def test_load_board_otari_failure_keeps_scored_issues(tmp_path, monkeypatch):
     assert payload["issues"][0]["title"] == "Real issue"
     assert payload["issues"][0]["summary"] == "Otari enrichment skipped."
     assert payload["issues"][0]["category"] == "unknown"
+    assert payload["issues"][0]["score_reason"] is None
     assert "warning" in payload
     assert "html" not in payload["warning"].lower()
     assert "403" in payload["warning"]
+    assert "1 of 1" in payload["warning"]
     snapshot = get_live_board(engine=engine)
     assert snapshot["issues"][0]["title"] == "Real issue"
 
@@ -118,6 +121,7 @@ def test_load_board_writes_call_log(tmp_path, monkeypatch):
 
 def test_load_board_success_returns_enriched_issues(tmp_path, monkeypatch):
     monkeypatch.setenv("OTARI_API_KEY", "gw-test")
+    reset_tracker()
     engine = get_engine(f"sqlite:///{tmp_path / 'ok.db'}")
     with (
         patch("src.live.load.fetch_issues_graphql", return_value=[MAPPED_ISSUE]),
@@ -128,6 +132,7 @@ def test_load_board_success_returns_enriched_issues(tmp_path, monkeypatch):
                 "category": "enhancement",
                 "worked_on": True,
                 "route": "easy",
+                "score_reason": "No comments or closing-PR commits, so the score stays low.",
             },
         ),
         patch("src.live.load.OtariClient.from_config", return_value=MagicMock()),
@@ -136,8 +141,64 @@ def test_load_board_success_returns_enriched_issues(tmp_path, monkeypatch):
     assert payload["issues"][0]["title"] == "Real issue"
     assert payload["issues"][0]["summary"] == "Add the thing."
     assert payload["issues"][0]["category"] == "enhancement"
+    assert payload["issues"][0]["score_reason"] == (
+        "No comments or closing-PR commits, so the score stays low."
+    )
+    assert "warning" not in payload
+    events = get_tracker().events
+    assert len(events) == 1
+    assert events[0]["feature"] == "enrich"
     snapshot = get_live_board(engine=engine)
     assert snapshot["issues"][0]["title"] == "Real issue"
+
+
+def test_load_board_persists_score_reason_on_pre_reason_sqlite(tmp_path, monkeypatch):
+    monkeypatch.setenv("OTARI_API_KEY", "gw-test")
+    db = tmp_path / "legacy.db"
+    with sqlite3.connect(db) as conn:
+        conn.execute(
+            """
+            CREATE TABLE issue (
+                id INTEGER PRIMARY KEY,
+                board_id INTEGER,
+                repo VARCHAR,
+                number INTEGER,
+                title VARCHAR,
+                body VARCHAR,
+                comments_count INTEGER,
+                reactions_count INTEGER,
+                subtasks_count INTEGER,
+                commits_on_closing_prs INTEGER,
+                last_activity_at VARCHAR,
+                status VARCHAR,
+                score FLOAT,
+                created_at VARCHAR,
+                updated_at VARCHAR,
+                summary VARCHAR,
+                category VARCHAR
+            )
+            """
+        )
+        conn.commit()
+    engine = get_engine(f"sqlite:///{db}")
+    with (
+        patch("src.live.load.fetch_issues_graphql", return_value=[MAPPED_ISSUE]),
+        patch(
+            "src.live.load.EnrichmentPipeline.enrich",
+            return_value={
+                "summary": "Add the thing.",
+                "category": "enhancement",
+                "worked_on": True,
+                "route": "easy",
+                "score_reason": "Five closing-PR commits lift this score.",
+            },
+        ),
+        patch("src.live.load.OtariClient.from_config", return_value=MagicMock()),
+    ):
+        payload = load_board("oauth-token", ["acme/app"], engine=engine)
+    assert payload["issues"][0]["score_reason"] == "Five closing-PR commits lift this score."
+    stored = get_live_board(engine=engine)
+    assert stored["issues"][0]["score_reason"] == "Five closing-PR commits lift this score."
 
 
 def test_load_board_rejects_too_many_repos():
@@ -314,3 +375,24 @@ def test_load_progress_tracks_each_enrichment(tmp_path, monkeypatch):
     assert seen[0]["total"] == 2
     assert "1 of 2" in seen[0]["detail"]
     assert get_load_progress()["status"] == "idle"
+
+
+def test_load_board_serializes_github_number_across_reload(tmp_path, monkeypatch):
+    monkeypatch.setenv("OTARI_API_KEY", "gw-test")
+    engine = get_engine(f"sqlite:///{tmp_path / 'number.db'}")
+    enrich = {
+        "summary": "Note.",
+        "category": "enhancement",
+        "worked_on": True,
+        "route": "easy",
+    }
+    with (
+        patch("src.live.load.fetch_issues_graphql", return_value=[MAPPED_ISSUE]),
+        patch("src.live.load.EnrichmentPipeline.enrich", return_value=enrich),
+        patch("src.live.load.OtariClient.from_config", return_value=MagicMock()),
+    ):
+        first = load_board("oauth-token", ["acme/app"], engine=engine)
+        second = load_board("oauth-token", ["acme/app"], engine=engine)
+    assert first["issues"][0]["number"] == 11
+    assert second["issues"][0]["number"] == 11
+    assert "id" in first["issues"][0]

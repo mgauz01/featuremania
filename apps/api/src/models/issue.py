@@ -22,3 +22,6 @@ class Issue(SQLModel, table=True):
     score: float
     created_at: str
     updated_at: str
+    summary: str | None = None
+    category: str | None = None
+    score_reason: str | None = None

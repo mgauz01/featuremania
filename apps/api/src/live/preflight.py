@@ -4,14 +4,13 @@ from src.scraper.github_graphql import fetch_viewer_login, list_accessible_repos
 
 _GITHUB_FAIL = "GitHub is not reachable with this sign-in"
 _OTARI_FAIL = "Otari is not configured or did not answer"
-_PING_MODEL = "mzai:moonshotai/Kimi-K2.6"
 
 
 def ping_otari() -> None:
     config = OtariConfig.from_env()
     client = OtariClient.from_config(config)
     client.complete(
-        model=_PING_MODEL,
+        model=config.summary_model,
         messages=[{"role": "user", "content": "Reply with ok"}],
         session_label="preflight",
     )

@@ -6,10 +6,25 @@ from src.models.board import Board
 from src.models.issue import Issue
 from src.scraper.cron import get_engine, scrape_repo
 from src.scraper.github_graphql import (
+    _issue_status,
     fetch_issues_graphql,
     fetch_org_repos,
     list_accessible_repos,
 )
+
+
+def test_issue_status_reads_github_signals_not_a_local_workflow():
+    merged = [{"state": "MERGED", "commits": {"totalCount": 18}}]
+    assert _issue_status("CLOSED", 0, []) == "done"
+    assert _issue_status("OPEN", 0, []) == "backlog"
+    assert _issue_status("OPEN", 1, []) == "triaged"
+    assert _issue_status("OPEN", 0, [], {"triaged"}) == "triaged"
+    assert _issue_status("OPEN", 0, merged) == "in_progress"
+    assert _issue_status("OPEN", 0, [], {"in progress"}) == "in_progress"
+    assert (
+        _issue_status("OPEN", 0, [{"state": "OPEN", "isDraft": False, "commits": {"totalCount": 2}}])
+        == "in_review"
+    )
 
 
 def test_mcp_client_available():
@@ -24,6 +39,9 @@ def test_graphql_fallback_query():
     assert "comments" in ISSUES_QUERY
     assert "reactions" in ISSUES_QUERY
     assert "CROSS_REFERENCED_EVENT" in ISSUES_QUERY
+    assert "CONNECTED_EVENT" in ISSUES_QUERY
+    assert "closedByPullRequestsReferences" in ISSUES_QUERY
+    assert "labels" in ISSUES_QUERY
 
 
 def test_fetch_issues_graphql_maps_nullable_body():
@@ -66,7 +84,7 @@ def test_fetch_issues_graphql_maps_nullable_body():
     headers = client.post.call_args.kwargs["headers"]
     assert headers["Authorization"] == "Bearer test-token"
 
-    assert issues[0]["status"] == "backlog"
+    assert issues[0]["status"] == "in_progress"
     closed_payload = {
         "data": {
             "repository": {
@@ -105,12 +123,47 @@ def test_fetch_issues_graphql_maps_nullable_body():
             "subtasks_count": 0,
             "commits_on_closing_prs": 4,
             "last_activity_at": "2026-08-22T00:00:00Z",
-            "status": "backlog",
+            "status": "in_progress",
             "score": 0.0,
             "created_at": "2026-08-20T00:00:00Z",
             "updated_at": "2026-08-22T00:00:00Z",
         }
     ]
+
+
+def test_fetch_issues_graphql_uses_in_progress_label_when_no_pr():
+    payload = {
+        "data": {
+            "repository": {
+                "issues": {
+                    "nodes": [
+                        {
+                            "number": 9,
+                            "title": "WIP bug",
+                            "body": "working",
+                            "state": "OPEN",
+                            "assignees": {"totalCount": 0},
+                            "labels": {"nodes": [{"name": "in progress"}]},
+                            "comments": {"totalCount": 0},
+                            "reactions": {"totalCount": 0},
+                            "timelineItems": {"nodes": []},
+                            "updatedAt": "2026-08-22T00:00:00Z",
+                            "createdAt": "2026-08-20T00:00:00Z",
+                        }
+                    ],
+                    "pageInfo": {"hasNextPage": False, "endCursor": None},
+                }
+            }
+        }
+    }
+    response = MagicMock()
+    response.json.return_value = payload
+    client = MagicMock()
+    client.__enter__.return_value = client
+    client.post.return_value = response
+    with patch("src.scraper.github_graphql.httpx.Client", return_value=client):
+        issues = fetch_issues_graphql("mozilla-ai", "otari", token="test-token")
+    assert issues[0]["status"] == "in_progress"
 
 
 def test_scrape_repo_falls_back_to_graphql():

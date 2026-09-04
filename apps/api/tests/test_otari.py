@@ -44,9 +44,9 @@ def test_otari_config_defaults_to_hosted(monkeypatch):
     monkeypatch.setenv("OTARI_API_KEY", "gw-test")
     config = OtariConfig.from_env()
     assert config.base_url == "https://api.otari.ai/v1"
-    assert config.summary_model == "mzai:moonshotai/Kimi-K2.6"
-    assert config.category_model == "mzai:moonshotai/Kimi-K2.6"
-    assert config.judgment_model == "mzai:moonshotai/Kimi-K2.6"
+    assert config.summary_model == "mzai:deepseek-ai/DeepSeek-V4-Pro"
+    assert config.category_model == "mzai:deepseek-ai/DeepSeek-V4-Pro"
+    assert config.judgment_model == "mzai:deepseek-ai/DeepSeek-V4-Pro"
 
 
 def test_otari_config_requires_api_key(monkeypatch):

@@ -72,15 +72,34 @@ _ISSUE_FIELDS = """
         title
         body
         state
+        assignees(first: 1) { totalCount }
+        labels(first: 20) { nodes { name } }
         comments { totalCount }
         reactions { totalCount }
-        timelineItems(itemTypes: [CROSS_REFERENCED_EVENT], first: 20) {
+        closedByPullRequestsReferences(first: 10) {
+          nodes {
+            commits { totalCount }
+            state
+            isDraft
+          }
+        }
+        timelineItems(itemTypes: [CROSS_REFERENCED_EVENT, CONNECTED_EVENT], first: 20) {
           nodes {
             ... on CrossReferencedEvent {
               source {
                 ... on PullRequest {
                   commits { totalCount }
                   state
+                  isDraft
+                }
+              }
+            }
+            ... on ConnectedEvent {
+              subject {
+                ... on PullRequest {
+                  commits { totalCount }
+                  state
+                  isDraft
                 }
               }
             }
@@ -110,17 +129,89 @@ ISSUES_QUERY = _issues_query(order_by_updated=False)
 ISSUES_QUERY_UPDATED = _issues_query(order_by_updated=True)
 
 
-def _commits_on_closing_prs(timeline_nodes: list[dict]) -> int:
+_IN_PROGRESS_LABELS = frozenset({"in progress", "in-progress", "wip", "working"})
+_IN_REVIEW_LABELS = frozenset({"in review", "review", "awaiting review"})
+_TRIAGED_LABELS = frozenset({"triaged", "accepted"})
+
+
+def _as_pull_request(value: object) -> dict | None:
+    if not isinstance(value, dict) or "commits" not in value:
+        return None
+    return value
+
+
+def _linked_pull_requests(node: dict, timeline_nodes: list[dict]) -> list[dict]:
+    """Pull requests GitHub has attached to the issue.
+
+    Cross-references, the Development sidebar (ConnectedEvent), and PRs that
+    used a closing keyword all count. A non-PR source has no commits field,
+    so that key keeps issue-to-issue mentions out.
+    """
+    prs: list[dict] = []
+    for item in timeline_nodes:
+        event = item or {}
+        found = _as_pull_request(event.get("source")) or _as_pull_request(event.get("subject"))
+        if found is not None:
+            prs.append(found)
+    for item in (node.get("closedByPullRequestsReferences") or {}).get("nodes") or []:
+        found = _as_pull_request(item)
+        if found is not None:
+            prs.append(found)
+    return prs
+
+
+def _label_names(node: dict) -> set[str]:
+    names: set[str] = set()
+    for item in (node.get("labels") or {}).get("nodes") or []:
+        name = str((item or {}).get("name") or "").strip().lower()
+        if name:
+            names.add(name)
+    return names
+
+
+def _commits_on_closing_prs(node: dict, timeline_nodes: list[dict]) -> int:
     total = 0
-    for node in timeline_nodes:
-        source = (node or {}).get("source") or {}
+    for source in _linked_pull_requests(node, timeline_nodes):
         commits = source.get("commits") or {}
         total += int(commits.get("totalCount") or 0)
     return total
 
 
+def _issue_status(
+    state: str,
+    assignee_count: int,
+    pull_requests: list[dict],
+    labels: set[str] | None = None,
+) -> str:
+    """Map GitHub's signals onto the five board columns.
+
+    GitHub itself only tracks open and closed, so the middle columns are
+    inferred from the work attached to an issue: an open pull request awaiting
+    review outranks a draft or already-merged one, which outranks a bare
+    assignment. Labels fill the same gaps when a repo uses them instead of
+    assignees. Without this every open issue lands in Backlog.
+    """
+    names = labels or set()
+    if state == "CLOSED":
+        return "done"
+    for pull_request in pull_requests:
+        ready = (pull_request.get("state") or "").upper() == "OPEN"
+        if ready and not pull_request.get("isDraft"):
+            return "in_review"
+    if names & _IN_REVIEW_LABELS:
+        return "in_review"
+    if pull_requests or names & _IN_PROGRESS_LABELS:
+        return "in_progress"
+    if assignee_count > 0 or names & _TRIAGED_LABELS:
+        return "triaged"
+    return "backlog"
+
+
 def _map_issue(node: dict, repo: str) -> dict:
     state = (node.get("state") or "OPEN").upper()
+    timeline_nodes = (node.get("timelineItems") or {}).get("nodes") or []
+    pull_requests = _linked_pull_requests(node, timeline_nodes)
+    assignee_count = int((node.get("assignees") or {}).get("totalCount") or 0)
     return {
         "repo": repo,
         "number": node["number"],
@@ -129,11 +220,9 @@ def _map_issue(node: dict, repo: str) -> dict:
         "comments_count": (node.get("comments") or {}).get("totalCount") or 0,
         "reactions_count": (node.get("reactions") or {}).get("totalCount") or 0,
         "subtasks_count": 0,
-        "commits_on_closing_prs": _commits_on_closing_prs(
-            (node.get("timelineItems") or {}).get("nodes") or []
-        ),
+        "commits_on_closing_prs": _commits_on_closing_prs(node, timeline_nodes),
         "last_activity_at": node.get("updatedAt") or "",
-        "status": "done" if state == "CLOSED" else "backlog",
+        "status": _issue_status(state, assignee_count, pull_requests, _label_names(node)),
         "score": 0.0,
         "created_at": node.get("createdAt") or "",
         "updated_at": node.get("updatedAt") or "",

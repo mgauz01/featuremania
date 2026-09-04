@@ -8,6 +8,7 @@ import time
 from fastapi import HTTPException
 from sqlmodel import Session, select
 
+from src.enrichment.cache import fingerprint, read_enrichment, write_enrichment
 from src.enrichment.pipeline import EnrichmentPipeline
 from src.live.loadlog import write_load_event
 from src.models import Board, Issue
@@ -78,6 +79,7 @@ def _split_repo(slug: str) -> tuple[str, str]:
 def _serialize_issue(issue: Issue) -> dict:
     return {
         "id": issue.id,
+        "number": issue.number,
         "title": issue.title,
         "score": issue.score,
         "repo": issue.repo,
@@ -88,14 +90,12 @@ def _serialize_issue(issue: Issue) -> dict:
         "commits_on_closing_prs": issue.commits_on_closing_prs,
         "subtasks_count": issue.subtasks_count,
         "comments_count": issue.comments_count,
+        "score_reason": issue.score_reason,
     }
 
 
-def _log_enrichment(pipeline: EnrichmentPipeline, enriched: dict) -> None:
-    tracker = get_tracker()
-    models = pipeline._models_for(enriched["route"])
-    for feature, model in models.items():
-        tracker.log(model=model, tokens=0, cost=0.0, feature=feature)
+def _log_enrichment(model: str) -> None:
+    get_tracker().log(model=model, tokens=0, cost=0.0, feature="enrich")
 
 
 def _otari_fail_detail(exc: BaseException) -> str:
@@ -156,35 +156,47 @@ def load_board(token: str, repos: list[str], *, engine=None) -> dict:
         except Exception as exc:
             raise HTTPException(status_code=503, detail=_otari_fail_detail(exc)) from exc
 
+        db = engine or get_engine()
         prepared: list[dict] = []
         warnings: list[str] = []
         total = len(scraped)
         enriched_ok = 0
         fallbacks = 0
+        cache_hits = 0
         enrich_started = time.perf_counter()
-        for index, issue in enumerate(scraped, start=1):
-            _set_progress(
-                status="running",
-                current=index,
-                total=total,
-                detail=f"Enriching {index} of {total}…",
-            )
-            score_issue(issue)
-            try:
-                enriched = pipeline.enrich(issue)
-                issue["summary"] = enriched["summary"]
-                issue["category"] = enriched["category"]
-                _log_enrichment(pipeline, enriched)
-                enriched_ok += 1
-            except Exception as exc:
-                fallbacks += 1
-                issue["summary"] = FALLBACK_SUMMARY
-                issue["category"] = FALLBACK_CATEGORY
-                warnings.append(_otari_fail_detail(exc))
-            prepared.append(issue)
+        with Session(db) as cache_session:
+            for index, issue in enumerate(scraped, start=1):
+                _set_progress(
+                    status="running",
+                    current=index,
+                    total=total,
+                    detail=f"Enriching {index} of {total}…",
+                )
+                score_issue(issue)
+                try:
+                    model = pipeline.model_for(issue)
+                    key = fingerprint(model, pipeline.build_prompt(issue))
+                    enriched = read_enrichment(cache_session, key)
+                    if enriched is None:
+                        enriched = pipeline.enrich(issue)
+                        write_enrichment(cache_session, key, model=model, enriched=enriched)
+                        _log_enrichment(model)
+                    else:
+                        cache_hits += 1
+                    issue["summary"] = enriched["summary"]
+                    issue["category"] = enriched["category"]
+                    issue["score_reason"] = enriched.get("score_reason") or None
+                    enriched_ok += 1
+                except Exception as exc:
+                    fallbacks += 1
+                    issue["summary"] = FALLBACK_SUMMARY
+                    issue["category"] = FALLBACK_CATEGORY
+                    issue["score_reason"] = None
+                    warnings.append(_otari_fail_detail(exc))
+                prepared.append(issue)
+            cache_session.commit()
         enrich_s = time.perf_counter() - enrich_started
 
-        db = engine or get_engine()
         with Session(db) as session:
             board = session.exec(select(Board).where(Board.name == LIVE_BOARD_NAME)).first()
             if board is None:
@@ -212,9 +224,7 @@ def load_board(token: str, repos: list[str], *, engine=None) -> dict:
 
         warning_text = ""
         if warnings:
-            warning_text = warnings[0]
-            if fallbacks > 1:
-                warning_text = f"Otari failed on {fallbacks} of {total} issues. {warnings[0]}"
+            warning_text = f"Otari failed on {fallbacks} of {total} issues. {warnings[0]}"
 
         write_load_event(
             {
@@ -223,6 +233,7 @@ def load_board(token: str, repos: list[str], *, engine=None) -> dict:
                 "issues_scraped": total,
                 "issues_enriched": enriched_ok,
                 "issues_fallback": fallbacks,
+                "otari_cache_hits": cache_hits,
                 "github_graphql_calls": graphql_call_count(),
                 "otari_calls": otari_call_count(),
                 "otari_retries": otari_retry_count(),
@@ -238,6 +249,7 @@ def load_board(token: str, repos: list[str], *, engine=None) -> dict:
             f" scraped={total}"
             f" enriched={enriched_ok}"
             f" fallback={fallbacks}"
+            f" cache_hits={cache_hits}"
             f" github_graphql={graphql_call_count()}"
             f" otari={otari_call_count()}"
             f" retries={otari_retry_count()}"

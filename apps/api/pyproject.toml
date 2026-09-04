@@ -24,3 +24,6 @@ package = false
 [tool.pytest.ini_options]
 pythonpath = ["."]
 testpaths = ["tests"]
+markers = [
+    "live: hits api.otari.ai; set RUN_OTARI_LIVE=1 and OTARI_API_KEY",
+]

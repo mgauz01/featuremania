@@ -76,52 +76,52 @@ export default function RoutingDashboard({
   }, [pollMs, pollUrl]);
 
   return (
-    <section
-      className="routing-dashboard"
-      aria-label="Live routing dashboard"
-      aria-busy={loading}
-    >
-      <header className="routing-dashboard-header">
-        <h2>Live routing</h2>
+    <details className="routing-dashboard-fold">
+      <summary>Live routing</summary>
+      <section
+        className="routing-dashboard"
+        aria-label="Live routing dashboard"
+        aria-busy={loading}
+      >
         {error ? (
           <p className="routing-dashboard-error" role="alert">
             {error}
           </p>
         ) : null}
-      </header>
-      {loading ? (
-        <p className="routing-dashboard-loading">Loading usage…</p>
-      ) : events.length === 0 ? (
-        <p className="routing-dashboard-empty">
-          {error ? "Usage feed unavailable. Showing no events." : "No enrichment calls yet."}
-        </p>
-      ) : (
-        <div className="routing-dashboard-table-wrap">
-          <table>
-            <thead>
-              <tr>
-                <th scope="col">Model</th>
-                <th scope="col">Feature</th>
-                <th scope="col">Tokens</th>
-                <th scope="col">Cost</th>
-                <th scope="col">Guardrail</th>
-              </tr>
-            </thead>
-            <tbody>
-              {events.map((event, index) => (
-                <tr key={`${event.model}-${event.feature}-${index}`}>
-                  <td>{event.model}</td>
-                  <td>{event.feature}</td>
-                  <td>{event.tokens}</td>
-                  <td>{formatCost(event.cost)}</td>
-                  <td>{event.guardrail_block ? event.guardrail_block : "ok"}</td>
+        {loading ? (
+          <p className="routing-dashboard-loading">Loading usage…</p>
+        ) : events.length === 0 ? (
+          <p className="routing-dashboard-empty">
+            {error ? "Usage feed unavailable. Showing no events." : "No enrichment calls yet."}
+          </p>
+        ) : (
+          <div className="routing-dashboard-table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th scope="col">Model</th>
+                  <th scope="col">Feature</th>
+                  <th scope="col">Tokens</th>
+                  <th scope="col">Cost</th>
+                  <th scope="col">Guardrail</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
-    </section>
+              </thead>
+              <tbody>
+                {events.map((event, index) => (
+                  <tr key={`${event.model}-${event.feature}-${index}`}>
+                    <td>{event.model}</td>
+                    <td>{event.feature}</td>
+                    <td>{event.tokens}</td>
+                    <td>{formatCost(event.cost)}</td>
+                    <td>{event.guardrail_block ? event.guardrail_block : "ok"}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </section>
+    </details>
   );
 }
 

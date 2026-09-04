@@ -28,9 +28,9 @@ class OtariConfig:
         return cls(
             base_url=_env("OTARI_BASE_URL", "https://api.otari.ai/v1").rstrip("/"),
             api_key=api_key,
-            summary_model=_env("OTARI_SUMMARY_MODEL", "mzai:deepseek-ai/DeepSeek-V3.2"),
-            category_model=_env("OTARI_CATEGORY_MODEL", "mzai:moonshotai/Kimi-K2.6"),
-            judgment_model=_env("OTARI_JUDGMENT_MODEL", "mzai:deepseek-ai/DeepSeek-V3.2"),
+            summary_model=_env("OTARI_SUMMARY_MODEL", "mzai:deepseek-ai/DeepSeek-V4-Pro"),
+            category_model=_env("OTARI_CATEGORY_MODEL", "mzai:deepseek-ai/DeepSeek-V4-Pro"),
+            judgment_model=_env("OTARI_JUDGMENT_MODEL", "mzai:deepseek-ai/DeepSeek-V4-Pro"),
             guardrail_profile=_env("OTARI_GUARDRAIL_PROFILE", "prompt-injection"),
             guardrail_mode=_env("OTARI_GUARDRAIL_MODE", "block"),
             budget_user=_env("OTARI_BUDGET_USER", "featuremania"),

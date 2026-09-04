@@ -23,36 +23,54 @@ export type KanbanIssue = {
   commits_on_closing_prs?: number;
   subtasks_count?: number;
   comments_count?: number;
+  score_reason?: string;
+  number?: number;
+  issueKey?: string;
+  kind?: "github" | "featuremania";
+  childKeys?: string[];
+  groupMode?: "parent" | "merge";
 };
 
 type KanbanBoardProps = {
   issues: KanbanIssue[];
+  sourceIssues?: KanbanIssue[];
+  selectedKeys?: string[];
+  onToggleSelect?: (issueKey: string) => void;
+  onUndoGroup?: (groupId: string) => void;
 };
 
-const COLUMNS: { id: IssueStatus; title: string }[] = [
-  { id: "backlog", title: "Backlog" },
-  { id: "triaged", title: "Triaged" },
-  { id: "in_progress", title: "In Progress" },
-  { id: "in_review", title: "In Review" },
-  { id: "done", title: "Done" },
+const COLUMNS: { id: IssueStatus; title: string; fromGitHub: string }[] = [
+  { id: "backlog", title: "Backlog", fromGitHub: "Open, unassigned, no linked PR" },
+  { id: "triaged", title: "Triaged", fromGitHub: "Assigned, or labeled triaged" },
+  { id: "in_progress", title: "In Progress", fromGitHub: "Linked PR, or labeled in progress" },
+  { id: "in_review", title: "In Review", fromGitHub: "Open PR ready for review" },
+  { id: "done", title: "Done", fromGitHub: "Closed on GitHub" },
 ];
 
 const STALE_AFTER_MS = 14 * 24 * 60 * 60 * 1000;
 
-function columnFor(issue: KanbanIssue): IssueStatus {
-  const status = issue.status ?? "backlog";
-  switch (status) {
-    case "backlog":
-    case "triaged":
-    case "in_progress":
-    case "in_review":
-    case "done":
-      return status;
-    default: {
-      const _exhaustive: never = status;
-      return _exhaustive;
+export function columnFor(issue: KanbanIssue): IssueStatus {
+  const status = issue.status;
+  if (status !== undefined) {
+    switch (status) {
+      case "backlog":
+      case "triaged":
+      case "in_progress":
+      case "in_review":
+      case "done":
+        return status;
+      default: {
+        const _exhaustive: never = status;
+        return _exhaustive;
+      }
     }
   }
+  // Stale snapshots omit status. A linked-PR commit count is the same
+  // signal the API uses for In Progress, so do not dump those into Backlog.
+  if ((issue.commits_on_closing_prs ?? 0) > 0) {
+    return "in_progress";
+  }
+  return "backlog";
 }
 
 function isStale(issue: KanbanIssue, now: number): boolean {
@@ -70,7 +88,27 @@ function sortByScoreDesc(issues: KanbanIssue[]): KanbanIssue[] {
   return [...issues].sort((left, right) => right.score - left.score);
 }
 
-export default function KanbanBoard({ issues }: KanbanBoardProps) {
+function childrenFor(issue: KanbanIssue, sourceIssues: KanbanIssue[]): KanbanIssue[] {
+  if (!issue.childKeys || issue.childKeys.length === 0) {
+    return [];
+  }
+  const byKey = new Map(
+    sourceIssues
+      .filter((child) => child.issueKey)
+      .map((child) => [child.issueKey as string, child]),
+  );
+  return issue.childKeys
+    .map((key) => byKey.get(key))
+    .filter((child): child is KanbanIssue => child !== undefined);
+}
+
+export default function KanbanBoard({
+  issues,
+  sourceIssues = issues,
+  selectedKeys = [],
+  onToggleSelect,
+  onUndoGroup,
+}: KanbanBoardProps) {
   const [repoFilter, setRepoFilter] = useState("");
   const [categoryFilter, setCategoryFilter] = useState("");
   const [hideStale, setHideStale] = useState(false);
@@ -163,17 +201,35 @@ export default function KanbanBoard({ issues }: KanbanBoardProps) {
             : "No issues match these filters."}
         </p>
       ) : null}
-      <p className="kanban-scroll-hint">Scroll sideways to see all columns.</p>
+      <p className="kanban-legend">
+        Columns follow GitHub. Cards cannot be dragged. Open and unassigned
+        with no linked pull request stays in Backlog.
+      </p>
       <div className="kanban-columns">
         {COLUMNS.map((column) => (
           <section key={column.id} className="kanban-column" aria-label={column.title}>
             <header className="kanban-column-header">
-              <h2>{column.title}</h2>
+              <div>
+                <h2>{column.title}</h2>
+                <p className="kanban-column-rule">{column.fromGitHub}</p>
+              </div>
               <span>{issuesByColumn[column.id].length}</span>
             </header>
-            {issuesByColumn[column.id].map((issue) => (
-              <IssueCard key={issue.id} issue={issue} />
-            ))}
+            <div className="kanban-column-inner">
+              {issuesByColumn[column.id].length === 0 ? (
+                <p className="kanban-column-empty">None from GitHub</p>
+              ) : null}
+              {issuesByColumn[column.id].map((issue) => (
+                <IssueCard
+                  key={issue.issueKey ?? issue.id}
+                  issue={issue}
+                  childrenIssues={childrenFor(issue, sourceIssues)}
+                  selected={Boolean(issue.issueKey && selectedKeys.includes(issue.issueKey))}
+                  onToggleSelect={onToggleSelect}
+                  onUndoGroup={onUndoGroup}
+                />
+              ))}
+            </div>
           </section>
         ))}
       </div>

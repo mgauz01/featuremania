@@ -1,11 +1,23 @@
+export function formatWorkIndex(score: number): string {
+  return score.toFixed(2);
+}
+
 type ScoreBadgeProps = {
   score: number;
+  onOpen?: () => void;
 };
 
-export default function ScoreBadge({ score }: ScoreBadgeProps) {
+export default function ScoreBadge({ score, onOpen }: ScoreBadgeProps) {
+  const label = formatWorkIndex(score);
   return (
-    <span className="score-badge" aria-label={`Score ${score.toFixed(1)}`}>
-      {score.toFixed(1)}
-    </span>
+    <button
+      type="button"
+      className="score-badge"
+      aria-label={`Work index ${label}`}
+      aria-haspopup="dialog"
+      onClick={onOpen}
+    >
+      {label}
+    </button>
   );
 }

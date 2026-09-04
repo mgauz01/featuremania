@@ -1,6 +1,7 @@
 import NextAuth, { type AuthOptions } from "next-auth";
 import GitHubProvider from "next-auth/providers/github";
 import type { JWT } from "next-auth/jwt";
+import { attachGithubUserId } from "@/lib/session-user";
 
 export type JwtToken = JWT & { accessToken?: string };
 
@@ -26,7 +27,7 @@ export const authOptions: AuthOptions = {
       clientId: process.env.GITHUB_ID ?? "",
       clientSecret: process.env.GITHUB_SECRET ?? "",
       authorization: {
-        params: { scope: "read:user repo" },
+        params: { scope: "read:user repo read:org" },
       },
     }),
   ],
@@ -34,8 +35,8 @@ export const authOptions: AuthOptions = {
     async jwt({ token, account }) {
       return persistGitHubAccessToken({ token, account });
     },
-    async session({ session }) {
-      return session;
+    async session({ session, token }) {
+      return attachGithubUserId({ session, token });
     },
   },
 };

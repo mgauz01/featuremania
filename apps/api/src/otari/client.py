@@ -72,7 +72,7 @@ class OtariClient:
         model = (
             self.config.summary_model
             if self.config is not None
-            else "mzai:moonshotai/Kimi-K2.6"
+            else "mzai:deepseek-ai/DeepSeek-V4-Pro"
         )
         return self.complete(
             model=model,

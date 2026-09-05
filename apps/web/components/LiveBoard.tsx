@@ -682,7 +682,7 @@ export default function LiveBoard({
             }}
           >
             <div
-              className="score-dialog"
+              className="score-dialog score-dialog-stack"
               role="dialog"
               aria-modal="true"
               aria-labelledby="overlap-title"
@@ -697,43 +697,64 @@ export default function LiveBoard({
               ) : null}
               {overlapResult ? (
                 <>
-                  <p>
-                    Overlap {overlapResult.overlap_index}{" "}
-                    {OVERLAP_LABELS[overlapResult.overlap_index] ?? "none"}
-                  </p>
-                  {overlapResult.overlap_index >= 3 ? (
-                    <p>Likely worth consolidating.</p>
-                  ) : (
-                    <p>These issues may not overlap. You can still consolidate.</p>
-                  )}
-                  {overlapResult.reason ? <p>{overlapResult.reason}</p> : null}
-                  <label className="kanban-filter">
-                    Consolidated title
-                    <input
-                      aria-label="Consolidated title"
-                      value={mergeTitle}
-                      onChange={(event) => setMergeTitle(event.target.value)}
-                    />
-                  </label>
-                  <button
-                    type="button"
-                    disabled={mergeTitle.trim().length === 0}
-                    onClick={confirmMerge}
-                  >
-                    Confirm consolidate
-                  </button>
+                  <section className="dialog-block" aria-label="Overlap score">
+                    <p className="dialog-score">
+                      Overlap {overlapResult.overlap_index}{" "}
+                      {OVERLAP_LABELS[overlapResult.overlap_index] ?? "none"}
+                    </p>
+                  </section>
+                  <section className="dialog-block" aria-label="Overlap description">
+                    {overlapResult.overlap_index >= 3 ? (
+                      <p>Likely worth consolidating.</p>
+                    ) : (
+                      <p>These issues may not overlap. You can still consolidate.</p>
+                    )}
+                    {overlapResult.reason ? (
+                      <p className="dialog-reason">{overlapResult.reason}</p>
+                    ) : null}
+                  </section>
+                  <section className="dialog-block">
+                    <label className="kanban-filter">
+                      Consolidated title
+                      <input
+                        aria-label="Consolidated title"
+                        value={mergeTitle}
+                        onChange={(event) => setMergeTitle(event.target.value)}
+                      />
+                    </label>
+                  </section>
+                  <div className="dialog-actions">
+                    <button
+                      type="button"
+                      disabled={mergeTitle.trim().length === 0}
+                      onClick={confirmMerge}
+                    >
+                      Confirm consolidate
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setOverlapOpen(false);
+                        setOverlapResult(null);
+                        setOverlapError(null);
+                      }}
+                    >
+                      Cancel
+                    </button>
+                  </div>
                 </>
-              ) : null}
-              <button
-                type="button"
-                onClick={() => {
-                  setOverlapOpen(false);
-                  setOverlapResult(null);
-                  setOverlapError(null);
-                }}
-              >
-                Cancel
-              </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setOverlapOpen(false);
+                    setOverlapResult(null);
+                    setOverlapError(null);
+                  }}
+                >
+                  Cancel
+                </button>
+              )}
             </div>
           </div>
         ) : null}

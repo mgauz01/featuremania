@@ -975,13 +975,23 @@ test("scores overlap then consolidates only after confirm", async () => {
   const dialog = await screen.findByRole("dialog", { name: "Consolidate issues" });
   expect(dialog).toHaveTextContent("Overlap 4 same work");
   expect(dialog).toHaveTextContent("Likely worth consolidating");
+  expect(within(dialog).getByRole("region", { name: "Overlap score" })).toBeInTheDocument();
+  expect(within(dialog).getByRole("region", { name: "Overlap description" })).toBeInTheDocument();
+  expect(within(dialog).getByRole("textbox", { name: "Consolidated title" })).toBeInTheDocument();
+  const css = readFileSync(resolve(__dirname, "../app/globals.css"), "utf8");
+  expect(css).toMatch(
+    /\.score-dialog-stack \.dialog-block \+ \.dialog-block[\s\S]*?border-top:\s*1px solid var\(--border\)/,
+  );
+  expect(css).toMatch(/\.score-dialog-stack\s*\{[\s\S]*?gap:\s*1\.15rem/);
   expect(screen.getByRole("heading", { name: "Login leak" })).toBeInTheDocument();
   fireEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
   expect(screen.queryByRole("dialog", { name: "Consolidate issues" })).not.toBeInTheDocument();
   expect(screen.getByRole("heading", { name: "Login leak" })).toBeInTheDocument();
   fireEvent.click(screen.getByRole("button", { name: "Consolidate" }));
   await screen.findByRole("dialog", { name: "Consolidate issues" });
-  fireEvent.change(screen.getByLabelText("Consolidated title"), { target: { value: "Auth leak" } });
+  fireEvent.change(screen.getByRole("textbox", { name: "Consolidated title" }), {
+    target: { value: "Auth leak" },
+  });
   fireEvent.click(screen.getByRole("button", { name: "Confirm consolidate" }));
   expect(screen.getByText("Auth leak")).toBeInTheDocument();
   expect(screen.getByText("Consolidated in FeatureMania")).toBeInTheDocument();

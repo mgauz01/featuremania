@@ -36,15 +36,15 @@ export async function proxyLiveApi(
   init?: RequestInit,
   timeoutMs?: number,
 ): Promise<NextResponse> {
-  const token = await getToken({ req, secret: process.env.NEXTAUTH_SECRET });
-  const accessToken =
-    token && typeof token.accessToken === "string" ? token.accessToken : undefined;
-  if (!accessToken) {
-    return NextResponse.json({ error: "Not signed in" }, { status: 401 });
-  }
-
-  const signal = init?.signal ?? (timeoutMs ? AbortSignal.timeout(timeoutMs) : undefined);
   try {
+    const token = await getToken({ req, secret: process.env.NEXTAUTH_SECRET });
+    const accessToken =
+      token && typeof token.accessToken === "string" ? token.accessToken : undefined;
+    if (!accessToken) {
+      return NextResponse.json({ error: "Not signed in" }, { status: 401 });
+    }
+
+    const signal = init?.signal ?? (timeoutMs ? AbortSignal.timeout(timeoutMs) : undefined);
     const response = await fetch(`${API_ORIGIN}${path}`, {
       ...init,
       signal,
@@ -58,7 +58,10 @@ export async function proxyLiveApi(
     try {
       return NextResponse.json(JSON.parse(text) as unknown, { status: response.status });
     } catch {
-      return new NextResponse(text, { status: response.status });
+      return NextResponse.json(
+        { detail: "The API returned an unexpected response. Try again." },
+        { status: response.status >= 400 ? response.status : 502 },
+      );
     }
   } catch (error) {
     if (isTimeoutError(error)) {
@@ -70,7 +73,10 @@ export async function proxyLiveApi(
     if (isConnectionError(error)) {
       return NextResponse.json({ error: API_DOWN_MESSAGE }, { status: 503 });
     }
-    throw error;
+    return NextResponse.json(
+      { detail: "The API request failed. Try again." },
+      { status: 503 },
+    );
   }
 }
 

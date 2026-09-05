@@ -39,6 +39,16 @@ test("proxyLiveApi returns 401 when the jwt has no access token", async () => {
   expect(response.status).toBe(401);
 });
 
+test("proxyLiveApi returns JSON when getToken throws", async () => {
+  vi.mocked(getToken).mockRejectedValue(new Error("decrypt"));
+  const req = new NextRequest("http://localhost:3000/api/live/overlap", { method: "POST" });
+  const response = await proxyLiveApi(req, "/v1/boards/overlap", { method: "POST", body: "{}" });
+  expect(response.status).toBe(503);
+  expect(await response.json()).toEqual({
+    detail: "The API request failed. Try again.",
+  });
+});
+
 test("proxyLiveApi returns 504 when the upstream fetch times out", async () => {
   vi.mocked(getToken).mockResolvedValue({ accessToken: "gho_test" } as never);
   vi.stubGlobal(
@@ -55,6 +65,41 @@ test("proxyLiveApi returns 504 when the upstream fetch times out", async () => {
   expect(response.status).toBe(504);
   expect(await response.json()).toEqual({
     detail: "Load timed out. Try fewer repositories.",
+  });
+});
+
+test("proxyLiveApi returns JSON when the upstream body is not JSON", async () => {
+  vi.mocked(getToken).mockResolvedValue({ accessToken: "gho_test" } as never);
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async () =>
+      new Response("<!DOCTYPE html><html><body>oops</body></html>", {
+        status: 500,
+        headers: { "Content-Type": "text/html" },
+      }),
+    ),
+  );
+  const req = new NextRequest("http://localhost:3000/api/live/overlap", { method: "POST" });
+  const response = await proxyLiveApi(req, "/v1/boards/overlap", { method: "POST", body: "{}" });
+  expect(response.status).toBe(500);
+  expect(await response.json()).toEqual({
+    detail: "The API returned an unexpected response. Try again.",
+  });
+});
+
+test("proxyLiveApi returns JSON when the upstream fetch throws unexpectedly", async () => {
+  vi.mocked(getToken).mockResolvedValue({ accessToken: "gho_test" } as never);
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async () => {
+      throw new Error("socket hang up");
+    }),
+  );
+  const req = new NextRequest("http://localhost:3000/api/live/overlap", { method: "POST" });
+  const response = await proxyLiveApi(req, "/v1/boards/overlap", { method: "POST", body: "{}" });
+  expect(response.status).toBe(503);
+  expect(await response.json()).toEqual({
+    detail: "The API request failed. Try again.",
   });
 });
 

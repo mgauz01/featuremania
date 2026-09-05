@@ -43,19 +43,32 @@ type LoadPayload = {
   warning?: string;
 };
 
+function looksLikeHtml(value: string): boolean {
+  const head = value.trim().slice(0, 80).toLowerCase();
+  return head.startsWith("<!doctype") || head.startsWith("<html") || head.includes("<html");
+}
+
+function readableText(value: string, fallback: string): string {
+  const trimmed = value.replace(/\s+/g, " ").trim();
+  if (!trimmed || looksLikeHtml(trimmed)) {
+    return fallback;
+  }
+  return trimmed.slice(0, 240);
+}
+
 function errorMessage(payload: unknown, fallback: string): string {
-  if (typeof payload === "string" && payload.trim()) {
-    return payload.replace(/\s+/g, " ").trim().slice(0, 240);
+  if (typeof payload === "string") {
+    return readableText(payload, fallback);
   }
   if (payload && typeof payload === "object") {
     const record = payload as { detail?: unknown; error?: unknown };
     if (typeof record.detail === "string" && record.detail) {
-      return record.detail;
+      return readableText(record.detail, fallback);
     }
     if (Array.isArray(record.detail) && record.detail[0]) {
       const first = record.detail[0];
       if (typeof first === "string" && first.trim()) {
-        return first;
+        return readableText(first, fallback);
       }
       if (
         first &&
@@ -68,7 +81,7 @@ function errorMessage(payload: unknown, fallback: string): string {
       }
     }
     if (typeof record.error === "string" && record.error) {
-      return record.error;
+      return readableText(record.error, fallback);
     }
   }
   return fallback;
@@ -428,6 +441,10 @@ export default function LiveBoard({
       } catch {
         payload = text;
       }
+      if (response.status === 404) {
+        setOverlapError("Overlap is not available. Restart the web app.");
+        return;
+      }
       if (!response.ok) {
         setOverlapError(errorMessage(payload, "Otari could not score overlap"));
         return;
@@ -435,10 +452,10 @@ export default function LiveBoard({
       const scored =
         payload && typeof payload === "object"
           ? (payload as {
-              overlap_index?: number;
-              reason?: string;
-              cited_issue_keys?: string[];
-            })
+            overlap_index?: number;
+            reason?: string;
+            cited_issue_keys?: string[];
+          })
           : null;
       if (!scored || typeof scored.overlap_index !== "number") {
         setOverlapError("Otari could not score overlap");
@@ -471,6 +488,7 @@ export default function LiveBoard({
   const blocked = preflight !== null && preflightBlocksPicker(preflight);
   const failText = preflightError
     ?? (blocked ? [preflight?.github_error, preflight?.otari_error].filter(Boolean).join(" ") : null);
+  const githubNeedsResignIn = Boolean(blocked && preflight?.github_error && !preflightError);
   const activeName =
     boards.find((board) => board.id === activeBoardId)?.name ?? defaultBoardName;
 
@@ -504,12 +522,18 @@ export default function LiveBoard({
         {failText ? (
           <p className="routing-dashboard-error" role="alert">
             {failText}
+            {githubNeedsResignIn ? " Sign out and sign in again." : null}
           </p>
         ) : null}
+        <p id="otari-inference-hint" className="visually-hidden">
+          Calls Otari
+        </p>
         {issues ? (
           <button
             type="button"
-            className="live-board-refresh"
+            className="live-board-refresh btn-inference"
+            aria-describedby="otari-inference-hint"
+            aria-busy={loading}
             onClick={() => void runLoad()}
             disabled={loading}
           >
@@ -547,7 +571,13 @@ export default function LiveBoard({
                   </label>
                 ))}
               </fieldset>
-              <button type="submit" disabled={loading || selected.length === 0}>
+              <button
+                type="submit"
+                className="btn-inference"
+                aria-describedby="otari-inference-hint"
+                aria-busy={loading}
+                disabled={loading || selected.length === 0}
+              >
                 Load board
               </button>
             </form>
@@ -596,6 +626,9 @@ export default function LiveBoard({
               </button>
               <button
                 type="button"
+                className="btn-inference"
+                aria-describedby="otari-inference-hint"
+                aria-busy={overlapBusy}
                 disabled={selectedKeys.length < 2 || overlapBusy}
                 onClick={() => void requestOverlap()}
               >

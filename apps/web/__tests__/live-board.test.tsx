@@ -94,6 +94,33 @@ test("picker fieldset is height-capped and Load board stays outside it", async (
 });
 
 
+test("a GitHub preflight failure tells the user to sign in again", async () => {
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (input: RequestInfo) => {
+      const url = String(input);
+      if (url.includes("/api/live/preflight")) {
+        return jsonResponse({
+          ready: false,
+          github: "error",
+          otari: "ok",
+          github_error: "GitHub is not reachable with this sign-in",
+          otari_error: null,
+        });
+      }
+      if (url.includes("/api/live/progress")) {
+        return idleProgress();
+      }
+      throw new Error(`unexpected fetch ${url}`);
+    }),
+  );
+
+  render(<LiveBoard dashboardPollMs={0} />);
+  const alert = await screen.findByRole("alert");
+  expect(alert).toHaveTextContent("GitHub is not reachable with this sign-in");
+  expect(alert).toHaveTextContent("Sign out and sign in again");
+});
+
 test("hides the repo picker when preflight is not ready", async () => {
   vi.stubGlobal(
     "fetch",
@@ -875,6 +902,23 @@ async function loadPair() {
   await screen.findByText("Login leak");
 }
 
+test("Load, Refresh, and Consolidate use inference chrome; local actions stay flat", async () => {
+  vi.stubGlobal("fetch", boardFetch());
+  await loadPair();
+  expect(screen.getByRole("button", { name: "Load board" })).toHaveClass("btn-inference");
+  expect(screen.getByRole("button", { name: "Refresh" })).toHaveClass("btn-inference");
+  expect(screen.getByRole("button", { name: "Consolidate" })).toHaveClass("btn-inference");
+  expect(screen.getByRole("button", { name: "Deconstruct" })).not.toHaveClass("btn-inference");
+  expect(screen.getByRole("button", { name: "Select all" })).not.toHaveClass("btn-inference");
+  expect(screen.getByRole("button", { name: "Refresh" })).toHaveAttribute(
+    "aria-describedby",
+    "otari-inference-hint",
+  );
+  const css = readFileSync(resolve(__dirname, "../app/globals.css"), "utf8");
+  expect(css).toMatch(/\.btn-inference\s*\{/);
+  expect(css).toMatch(/\.issue-card-summary\s*\{[\s\S]*border-left:\s*3px solid var\(--accent\)/);
+});
+
 test("select all and deselect toggle every visible GitHub ticket", async () => {
   vi.stubGlobal("fetch", boardFetch());
   await loadPair();
@@ -992,6 +1036,59 @@ test("plain-text overlap failures still show the server message", async () => {
   fireEvent.click(screen.getByRole("checkbox", { name: "Select acme/app#2" }));
   fireEvent.click(screen.getByRole("button", { name: "Consolidate" }));
   await screen.findByText(/internal server error/i);
+});
+
+test("a missing overlap route tells the user to restart the web app", async () => {
+  const fetchMock = boardFetch();
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (input: RequestInfo, init?: RequestInit) => {
+      if (String(input).includes("/api/live/overlap") && init?.method === "POST") {
+        return new Response(
+          "<!DOCTYPE html><html lang=\"en\"><head><link rel=\"stylesheet\" href=\"/_next/static/css/app/layout.css\"/></head><body>Not Found</body></html>",
+          {
+            status: 404,
+            headers: { "Content-Type": "text/html; charset=utf-8" },
+          },
+        );
+      }
+      return fetchMock(input, init);
+    }),
+  );
+  await loadPair();
+  fireEvent.click(screen.getByRole("checkbox", { name: "Select acme/app#1" }));
+  fireEvent.click(screen.getByRole("checkbox", { name: "Select acme/app#2" }));
+  fireEvent.click(screen.getByRole("button", { name: "Consolidate" }));
+  const dialog = await screen.findByRole("dialog", { name: "Consolidate issues" });
+  expect(dialog).toHaveTextContent("Overlap is not available. Restart the web app.");
+  expect(dialog).not.toHaveTextContent("<!DOCTYPE");
+});
+
+test("HTML overlap failures show the fallback instead of the page markup", async () => {
+  const fetchMock = boardFetch();
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (input: RequestInfo, init?: RequestInit) => {
+      if (String(input).includes("/api/live/overlap") && init?.method === "POST") {
+        return new Response(
+          "<!DOCTYPE html><html lang=\"en\"><head><meta charSet=\"utf-8\"/><link rel=\"stylesheet\" href=\"/_next/static/css/app/layout.css\"/></head><body>Internal Server Error</body></html>",
+          {
+            status: 500,
+            headers: { "Content-Type": "text/html; charset=utf-8" },
+          },
+        );
+      }
+      return fetchMock(input, init);
+    }),
+  );
+  await loadPair();
+  fireEvent.click(screen.getByRole("checkbox", { name: "Select acme/app#1" }));
+  fireEvent.click(screen.getByRole("checkbox", { name: "Select acme/app#2" }));
+  fireEvent.click(screen.getByRole("button", { name: "Consolidate" }));
+  const dialog = await screen.findByRole("dialog", { name: "Consolidate issues" });
+  expect(dialog).toHaveTextContent("Otari could not score overlap");
+  expect(dialog).not.toHaveTextContent("<!DOCTYPE");
+  expect(dialog).not.toHaveTextContent("layout.css");
 });
 
 test("Refresh keeps grouping when sqlite ids change", async () => {

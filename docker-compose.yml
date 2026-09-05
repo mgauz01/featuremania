@@ -17,4 +17,45 @@ services:
       PORT: "8000"
     ports:
       - "8000:8000"
+    volumes:
+      - ./apps/api/src:/app/src
+    # Local live-source only. Railway/Render keep the baked Dockerfile CMD.
+    command:
+      [
+        "sh",
+        "-c",
+        "exec uvicorn src.main:app --host 0.0.0.0 --port ${PORT:-8000} --reload",
+      ]
     restart: unless-stopped
+
+  web:
+    # Browser stays on localhost:3000. Server-side API_ORIGIN uses Compose DNS.
+    # Do not also run ./run.sh — both paths publish 3000 and 8000.
+    build:
+      context: .
+      dockerfile: Dockerfile.web
+    env_file:
+      - path: apps/web/.env.local
+        required: false
+    environment:
+      API_ORIGIN: http://api:8000
+      NEXTAUTH_URL: http://localhost:3000
+      WATCHPACK_POLLING: "true"
+      CHOKIDAR_USEPOLLING: "true"
+      WATCHFILES_FORCE_POLLING: "true"
+    ports:
+      - "3000:3000"
+    volumes:
+      - .:/app
+      - web_node_modules:/app/node_modules
+      - web_app_node_modules:/app/apps/web/node_modules
+      - web_next:/app/apps/web/.next
+    depends_on:
+      api:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  web_node_modules:
+  web_app_node_modules:
+  web_next:

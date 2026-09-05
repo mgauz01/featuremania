@@ -2,10 +2,15 @@
 .pi
 .pnpm-store
 node_modules
-apps/web
+apps/api
+apps/web/node_modules
+apps/web/.next
 docs
 .env
 .env.local
+**/.env
+**/.env.local
+apps/web/.env.local
 **/.venv
 **/__pycache__
 **/tsconfig.tsbuildinfo

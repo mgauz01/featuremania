@@ -980,7 +980,7 @@ test("scores overlap then consolidates only after confirm", async () => {
   expect(within(dialog).getByRole("textbox", { name: "Consolidated title" })).toBeInTheDocument();
   const css = readFileSync(resolve(__dirname, "../app/globals.css"), "utf8");
   expect(css).toMatch(
-    /\.score-dialog-stack \.dialog-block \+ \.dialog-block[\s\S]*?border-top:\s*1px solid var\(--border\)/,
+    /\.score-dialog-stack \.dialog-block\s*\+\s*\.dialog-block[\s\S]*?border-top:\s*1px solid var\(--border\)/,
   );
   expect(css).toMatch(/\.score-dialog-stack\s*\{[\s\S]*?gap:\s*1\.15rem/);
   expect(screen.getByRole("heading", { name: "Login leak" })).toBeInTheDocument();

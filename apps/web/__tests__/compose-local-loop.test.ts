@@ -12,6 +12,7 @@ test("compose publishes a web service that hops to the API by Compose DNS", () =
   expect(compose).toContain("NEXTAUTH_URL: http://localhost:3000");
   expect(compose).toContain("3000:3000");
   expect(compose).toContain("8000:8000");
+  expect(compose).toContain("--port 8000 --reload");
 });
 
 test("compose still forbids an Otari sidecar", () => {
